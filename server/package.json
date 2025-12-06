@@ -1,0 +1,32 @@
+{
+  "name": "prompt-collector-server",
+  "version": "1.0.0",
+  "description": "Prompt收集工具后端服务",
+  "main": "index.js",
+  "scripts": {
+    "dev": "nodemon index.js",
+    "start": "node index.js",
+    "db:init": "node scripts/initDb.js",
+    "thumbs:backfill:video": "node scripts/backfillVideoThumbs.js",
+    "tags:recalc": "node scripts/recalcTagUsage.js"
+  },
+  "dependencies": {
+    "ahocorasick": "^1.0.2",
+    "bcrypt": "^5.1.1",
+    "better-sqlite3": "^9.2.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "fluent-ffmpeg": "^2.1.2",
+    "helmet": "^7.1.0",
+    "joi": "^17.11.0",
+    "jsonwebtoken": "^9.0.2",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.4",
+    "sharp": "^0.33.1",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  }
+}

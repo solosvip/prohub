@@ -1,0 +1,315 @@
+const express = require('express');
+const Database = require('better-sqlite3');
+const path = require('path');
+const { authenticateToken } = require('./auth');
+const { findMatchingTags } = require('../services/tagMatcher');
+const router = express.Router();
+
+// 使用认证中间件
+router.use(authenticateToken);
+
+// 初始化数据库连接
+const DB_FILE = process.env.DB_FILE || path.join(process.env.DATA_DIR || './data', 'app.sqlite');
+const db = new Database(DB_FILE);
+
+// --- 颜色生成辅助函数 ---
+
+/**
+ * 将HSL颜色值转换为HEX格式。
+ * h, s, l 在 [0, 1] 范围内, 返回 #rrggbb
+ */
+function hslToHex(h, s, l) {
+  s /= 100;
+  l /= 100;
+  const a = s * Math.min(l, 1 - l);
+  const f = n => {
+    const k = (n + h / 30) % 12;
+    const color = l - a * Math.max(Math.min(k - 3, 9 - k, 1), -1);
+    return Math.round(255 * color).toString(16).padStart(2, '0');
+  };
+  return `#${f(0)}${f(8)}${f(4)}`;
+}
+
+/**
+ * 使用黄金角度算法生成一个新的、唯一的标签颜色。
+ */
+const generateNewTagColor = () => {
+  try {
+    const countResult = db.prepare('SELECT COUNT(*) as count FROM tags').get();
+    const tagCount = countResult.count;
+
+    // 使用黄金角度 (137.5度) 的高精度变体来确保颜色分布均匀
+    const hue = (tagCount * 137.508) % 360;
+    // 固定饱和度和亮度以保持风格统一 (柔和、清晰)
+    const saturation = 70;
+    const lightness = 75;
+
+    return hslToHex(hue, saturation, lightness);
+  } catch (error) {
+    console.error('Failed to generate new tag color:', error);
+    // 出错时返回一个安全的默认颜色
+    return '#6366f1';
+  }
+};
+
+
+// 获取所有标签
+router.get('/', (req, res) => {
+  try {
+    const tags = db.prepare(`
+      SELECT id, name, color, usage_count, created_at, updated_at 
+      FROM tags 
+      ORDER BY usage_count DESC, created_at DESC
+    `).all();
+
+    res.json({
+      success: true,
+      data: tags
+    });
+  } catch (error) {
+    console.error('Get tags error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '获取标签失败' }
+    });
+  }
+});
+
+// 获取标签建议（高频标签）
+router.get('/suggestions', (req, res) => {
+  try {
+    const { q } = req.query;
+    let query = `
+      SELECT id, name, color, usage_count 
+      FROM tags 
+      WHERE usage_count > 0
+    `;
+    let params = [];
+
+    // 如果有搜索关键词，进行模糊匹配
+    if (q && q.trim()) {
+      query += ` AND name LIKE ?`;
+      params.push(`%${q.trim()}%`);
+    }
+
+    query += ` ORDER BY usage_count DESC, name ASC LIMIT 10`;
+
+    const suggestions = db.prepare(query).all(params);
+
+    res.json({
+      success: true,
+      data: suggestions
+    });
+  } catch (error) {
+    console.error('Get tag suggestions error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '获取标签建议失败' }
+    });
+  }
+});
+
+// 根据文本内容匹配标签
+router.get('/match-by-text', (req, res) => {
+  try {
+    console.log('[DEBUG-BE] /match-by-text endpoint hit');
+    const { title = '', content = '' } = req.query;
+    const searchText = `${title} ${content}`;
+    console.log(`[DEBUG-BE] Received searchText (first 100 chars): ${searchText.substring(0, 100)}`);
+
+    if (!searchText.trim()) {
+      console.log('[DEBUG-BE] SearchText is empty, returning empty array.');
+      return res.json({ success: true, data: [] });
+    }
+
+    console.log('[DEBUG-BE] Fetching all tags from DB...');
+    const allTags = db.prepare('SELECT id, name, color FROM tags').all();
+    console.log(`[DEBUG-BE] Found ${allTags.length} total tags.`);
+
+    console.log('[DEBUG-BE] Calling findMatchingTags...');
+    let matchedTags = findMatchingTags(searchText, allTags) || [];
+    // 限制最多 6 条
+    matchedTags = matchedTags.slice(0, 6);
+    console.log(`[DEBUG-BE] Matched ${matchedTags.length} tags:`, matchedTags.map(t => t.name));
+
+    res.json({
+      success: true,
+      data: matchedTags,
+    });
+
+  } catch (error) {
+    console.error('Match tags by text error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '匹配标签失败' },
+    });
+  }
+});
+
+// 创建标签
+router.post('/', (req, res) => {
+  try {
+    const { name, color } = req.body;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({
+        error: { code: 'INVALID_NAME', message: '标签名称不能为空' }
+      });
+    }
+
+    // 检查标签名是否已存在
+    const existingTag = db.prepare('SELECT id FROM tags WHERE name = ?').get(name.trim());
+    if (existingTag) {
+      return res.status(400).json({
+        error: { code: 'DUPLICATE_NAME', message: '标签名称已存在' }
+      });
+    }
+
+    const tagColor = color || generateNewTagColor();
+    const now = new Date().toISOString();
+
+    const result = db.prepare(`
+      INSERT INTO tags (name, color, usage_count, created_at, updated_at)
+      VALUES (?, ?, 0, ?, ?)
+    `).run(name.trim(), tagColor, now, now);
+
+    const newTag = db.prepare(`
+      SELECT id, name, color, usage_count, created_at, updated_at 
+      FROM tags WHERE id = ?
+    `).get(result.lastInsertRowid);
+
+    res.status(201).json({
+      success: true,
+      data: newTag
+    });
+
+  } catch (error) {
+    console.error('Create tag error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '创建标签失败' }
+    });
+  }
+});
+
+// 更新标签
+router.put('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, color } = req.body;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({
+        error: { code: 'INVALID_NAME', message: '标签名称不能为空' }
+      });
+    }
+
+    // 检查标签是否存在
+    const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id);
+    if (!tag) {
+      return res.status(404).json({
+        error: { code: 'TAG_NOT_FOUND', message: '标签不存在' }
+      });
+    }
+
+    // 检查标签名是否已存在（排除当前标签）
+    const existingTag = db.prepare('SELECT id FROM tags WHERE name = ? AND id != ?').get(name.trim(), id);
+    if (existingTag) {
+      return res.status(400).json({
+        error: { code: 'DUPLICATE_NAME', message: '标签名称已存在' }
+      });
+    }
+
+    const tagColor = color || tag.color;
+    const now = new Date().toISOString();
+
+    db.prepare(`
+      UPDATE tags 
+      SET name = ?, color = ?, updated_at = ?
+      WHERE id = ?
+    `).run(name.trim(), tagColor, now, id);
+
+    const updatedTag = db.prepare(`
+      SELECT id, name, color, usage_count, created_at, updated_at 
+      FROM tags WHERE id = ?
+    `).get(id);
+
+    res.json({
+      success: true,
+      data: updatedTag
+    });
+
+  } catch (error) {
+    console.error('Update tag error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '更新标签失败' }
+    });
+  }
+});
+
+// 删除标签
+router.delete('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    // 检查标签是否存在
+    const tag = db.prepare('SELECT * FROM tags WHERE id = ?').get(id);
+    if (!tag) {
+      return res.status(404).json({
+        error: { code: 'TAG_NOT_FOUND', message: '标签不存在' }
+      });
+    }
+
+    // 使用事务删除标签和相关联的关系
+    const deleteTag = db.transaction(() => {
+      // 删除标签与内容的关联关系
+      db.prepare('DELETE FROM item_tags WHERE tag_id = ?').run(id);
+      
+      // 删除标签
+      db.prepare('DELETE FROM tags WHERE id = ?').run(id);
+    });
+
+    deleteTag();
+
+    res.json({
+      success: true,
+      message: '标签删除成功'
+    });
+
+  } catch (error) {
+    console.error('Delete tag error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '删除标签失败' }
+    });
+  }
+});
+
+// 更新标签使用次数的辅助函数
+// 重新计算标签使用次数（支持：单个id、id数组、不传则全量）
+const updateTagUsageCount = (tagId) => {
+  try {
+    const recalcOne = (id) => {
+      const row = db.prepare('SELECT COUNT(*) as count FROM item_tags WHERE tag_id = ?').get(id);
+      db.prepare('UPDATE tags SET usage_count = ? WHERE id = ?').run(row.count, id);
+    };
+
+    if (Array.isArray(tagId)) {
+      const seen = new Set();
+      const tx = db.transaction((ids) => {
+        ids.forEach((tid) => { if (tid && !seen.has(tid)) { seen.add(tid); recalcOne(tid); } });
+      });
+      tx(tagId);
+      return;
+    }
+
+    if (typeof tagId !== 'undefined' && tagId !== null) {
+      recalcOne(tagId);
+      return;
+    }
+
+    const ids = db.prepare('SELECT id FROM tags').all().map(r => r.id);
+    const txAll = db.transaction(() => { ids.forEach(recalcOne); });
+    txAll();
+  } catch (error) {
+    console.error('Update tag usage count error:', error);
+  }
+};
+router.updateTagUsageCount = updateTagUsageCount;
+
+module.exports = router;

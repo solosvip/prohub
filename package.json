@@ -1,0 +1,20 @@
+{
+  "name": "prompt-collector",
+  "version": "1.0.0",
+  "description": "单用户版Prompt收集管理工具",
+  "main": "server/index.js",
+  "scripts": {
+    "dev": "concurrently \"npm run server:dev\" \"npm run client:dev\"",
+    "server:dev": "cd server && npm run dev",
+    "client:dev": "cd client && npm run dev",
+    "build": "cd client && npm run build",
+    "start": "cd server && npm start",
+    "postinstall": "cd server && npm install && cd ../client && npm install"
+  },
+  "keywords": ["prompt", "collection", "management", "ai"],
+  "author": "Rovo Dev",
+  "license": "MIT",
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  }
+}

@@ -1,0 +1,162 @@
+.segmented-prompt-container {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.segmented-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.segments-toggle-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: #f3f4f6;
+  color: #374151;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.segments-toggle-btn:hover { background: #e5e7eb; }
+.segments-toggle-btn svg { width: 16px; height: 16px; }
+
+.segments-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.segment-item {
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  padding: 12px;
+  transition: box-shadow 0.2s;
+}
+
+.segment-item:focus-within {
+  border-color: #a5b4fc;
+  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+}
+
+.segment-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.segment-number {
+  font-size: 14px;
+  font-weight: 600;
+  color: #4f46e5;
+  background-color: #e0e7ff;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.segment-title-input {
+  flex-grow: 1;
+  border: none;
+  background: none;
+  font-size: 14px;
+  font-weight: 500;
+  color: #111827;
+  padding: 4px 0;
+}
+
+.segment-title-input:focus {
+  outline: none;
+}
+
+.segment-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.segment-action-btn {
+  background: none;
+  border: none;
+  padding: 4px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: #9ca3af;
+  transition: all 0.2s;
+}
+
+.segment-action-btn:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  color: #374151;
+}
+
+.segment-action-btn.delete:hover:not(:disabled) {
+  color: #ef4444;
+}
+
+.segment-action-btn:disabled {
+  color: #d1d5db;
+  cursor: not-allowed;
+}
+
+.segment-action-btn svg {
+  width: 16px;
+  height: 16px;
+}
+
+.segment-content-textarea {
+  width: 100%;
+  border: 1px solid #d1d5db;
+  border-radius: 8px;
+  padding: 10px 12px;
+  font-size: 14px;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, 'PingFang SC', 'Microsoft YaHei', sans-serif;
+  line-height: 1.8; /* 增加行高，提高可读性 */
+  background-color: white;
+  resize: vertical; /* 在收起状态下允许拖拽；展开状态在 JS 中关闭 */
+  transition: all 0.2s;
+}
+
+.segment-content-textarea:focus {
+  outline: none;
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.btn-add-segment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 10px 16px;
+  border-radius: 8px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px dashed #d1d5db;
+  background-color: #f9fafb;
+  color: #374151;
+}
+
+.btn-add-segment:hover {
+  background-color: #f3f4f6;
+  border-color: #a5b4fc;
+}
+
+.btn-add-segment svg {
+  width: 20px;
+  height: 20px;
+}

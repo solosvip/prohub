@@ -1,0 +1,24 @@
+services:
+  app:
+    build: .
+    container_name: prompt-collector
+    environment:
+      NODE_ENV: production
+      PORT: 9100
+      DATA_DIR: /data
+      UPLOAD_DIR: /data/uploads
+      # 安全配置：请在生产环境中覆盖为你自己的账号与随机密钥
+      ADMIN_USERNAME: ${ADMIN_USERNAME:-admin}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      JWT_SECRET: ${JWT_SECRET:-please-change-me-to-a-long-random-secret}
+      # 可选大小限制（默认：图片10MB，视频100MB）
+      MAX_IMAGE_SIZE: 10485760
+      MAX_VIDEO_SIZE: 104857600
+      THUMBNAIL_WIDTH: 400
+      TEMP_FILE_TTL_MINUTES: 30
+    volumes:
+      - ./server/data:/data
+    ports:
+      - "9100:9100"
+    restart: unless-stopped
+

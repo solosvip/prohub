@@ -1,0 +1,40 @@
+/* Patch: grid layout + show more for popular tags */
+.tags-list {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+.tag-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  background: #f9fafb;
+  border-radius: 8px;
+  border: 1px solid #f3f4f6;
+  justify-content: space-between;
+}
+.tags-actions { margin-top: 12px; text-align: center; }
+.tag-toggle-btn {
+  padding: 6px 12px;
+  border: 1px solid #e5e7eb;
+  background: #fff;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  color: #374151;
+  cursor: pointer;
+}
+.tag-toggle-btn:hover { background: #f9fafb; }
+/* 头部：标题 + 展开/收起 */
+.tags-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+@media (max-width: 1200px) {
+  .tags-list { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (max-width: 768px) {
+  .tags-list { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

@@ -1,0 +1,262 @@
+const express = require('express');
+const Database = require('better-sqlite3');
+const path = require('path');
+const { authenticateToken } = require('./auth');
+const router = express.Router();
+
+// 使用认证中间件
+router.use(authenticateToken);
+
+// 初始化数据库连接
+const DB_FILE = process.env.DB_FILE || path.join(process.env.DATA_DIR || './data', 'app.sqlite');
+const db = new Database(DB_FILE);
+
+// 获取所有文件夹（树形结构）
+router.get('/', (req, res) => {
+  try {
+    const folders = db.prepare(`
+      SELECT id, name, parent_id, type, created_at, updated_at 
+      FROM folders 
+      ORDER BY name ASC
+    `).all();
+
+    const buildFolderTree = (folders) => {
+      const folderMap = {};
+      const tree = [];
+
+      folders.forEach(folder => {
+        folderMap[folder.id] = { ...folder, children: [] };
+      });
+
+      folders.forEach(folder => {
+        if (folder.parent_id) {
+          if (folderMap[folder.parent_id]) {
+            folderMap[folder.parent_id].children.push(folderMap[folder.id]);
+          }
+        } else {
+          tree.push(folderMap[folder.id]);
+        }
+      });
+
+      return tree;
+    };
+
+    const folderTree = buildFolderTree(folders);
+
+    console.log('--- DEBUG: folderTree to be sent ---');
+    console.log(JSON.stringify(folderTree, null, 2));
+    console.log('--- END DEBUG ---');
+
+    res.json({
+      success: true,
+      data: folderTree
+    });
+  } catch (error) {
+    console.error('Get folders error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '获取文件夹失败' }
+    });
+  }
+});
+
+// 创建文件夹
+router.post('/', (req, res) => {
+  try {
+    const { name, parent_id } = req.body;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({
+        error: { code: 'INVALID_NAME', message: '文件夹名称不能为空' }
+      });
+    }
+
+    let parentFolder = null;
+    if (parent_id) {
+      parentFolder = db.prepare('SELECT id, type FROM folders WHERE id = ?').get(parent_id);
+      if (!parentFolder) {
+        return res.status(400).json({
+          error: { code: 'PARENT_NOT_FOUND', message: '父文件夹不存在' }
+        });
+      }
+    } else {
+        return res.status(403).json({
+            error: { code: 'FORBIDDEN', message: '不允许创建新的顶层文件夹' }
+        });
+    }
+
+    const folderType = parentFolder ? parentFolder.type : null;
+
+    const existingFolder = db.prepare(`
+      SELECT id FROM folders 
+      WHERE name = ? AND parent_id = ?
+    `).get(name.trim(), parent_id);
+
+    if (existingFolder) {
+      return res.status(400).json({
+        error: { code: 'DUPLICATE_NAME', message: '文件夹名称已存在' }
+      });
+    }
+
+    const now = new Date().toISOString();
+    const result = db.prepare(`
+      INSERT INTO folders (name, parent_id, type, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?)
+    `).run(name.trim(), parent_id, folderType, now, now);
+
+    const newFolder = db.prepare(`
+      SELECT id, name, parent_id, type, created_at, updated_at 
+      FROM folders WHERE id = ?
+    `).get(result.lastInsertRowid);
+
+    res.status(201).json({
+      success: true,
+      data: newFolder
+    });
+
+  } catch (error) {
+    console.error('Create folder error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '创建文件夹失败' }
+    });
+  }
+});
+
+// 更新文件夹
+router.put('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, parent_id } = req.body;
+
+    if (!name || name.trim().length === 0) {
+      return res.status(400).json({
+        error: { code: 'INVALID_NAME', message: '文件夹名称不能为空' }
+      });
+    }
+
+    const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(id);
+    if (!folder) {
+      return res.status(404).json({
+        error: { code: 'FOLDER_NOT_FOUND', message: '文件夹不存在' }
+      });
+    }
+
+    let newType = folder.type;
+    if (parent_id && parent_id !== folder.parent_id) {
+      const parentExists = db.prepare('SELECT id, type FROM folders WHERE id = ?').get(parent_id);
+      if (!parentExists) {
+        return res.status(400).json({
+          error: { code: 'PARENT_NOT_FOUND', message: '父文件夹不存在' }
+        });
+      }
+      newType = parentExists.type; // 移动文件夹时，也更新其type
+
+      if (parent_id === id) {
+        return res.status(400).json({
+          error: { code: 'CIRCULAR_REFERENCE', message: '不能将文件夹移动到自身' }
+        });
+      }
+    }
+
+    const existingFolder = db.prepare(`
+      SELECT id FROM folders 
+      WHERE name = ? AND parent_id IS ? AND id != ?
+    `).get(name.trim(), parent_id || folder.parent_id, id);
+
+    if (existingFolder) {
+      return res.status(400).json({
+        error: { code: 'DUPLICATE_NAME', message: '文件夹名称已存在' }
+      });
+    }
+
+    const now = new Date().toISOString();
+    db.prepare(`
+      UPDATE folders 
+      SET name = ?, parent_id = ?, type = ?, updated_at = ?
+      WHERE id = ?
+    `).run(name.trim(), parent_id || null, newType, now, id);
+
+
+    // Cascade type change to all descendants if type changed
+    if (newType  !== folder.type) { 
+      const cascadeSql =  ` 
+        WITH RECURSIVE subtree(id) AS (
+          SELECT id FROM folders WHERE parent_id = ?
+          UNION ALL
+          SELECT f.id FROM folders f JOIN subtree s ON f.parent_id = s.id
+        )
+        UPDATE folders
+        SET type = ?, updated_at = ?
+        WHERE id IN (SELECT id FROM subtree)
+
+       `; 
+      db.prepare(cascadeSql).run(id, newType, now);
+    }
+
+    const updatedFolder = db.prepare(`
+      SELECT id, name, parent_id, type, created_at, updated_at 
+      FROM folders WHERE id = ?
+    `).get(id);
+
+    res.json({
+      success: true,
+      data: updatedFolder
+    });
+
+  } catch (error) {
+    console.error('Update folder error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '更新文件夹失败' }
+    });
+  }
+});
+
+// 删除文件夹
+router.delete('/:id', (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const folder = db.prepare('SELECT * FROM folders WHERE id = ?').get(id);
+    if (!folder) {
+      return res.status(404).json({
+        error: { code: 'FOLDER_NOT_FOUND', message: '文件夹不存在' }
+      });
+    }
+
+    const isRoot = folder.parent_id === null;
+    if (isRoot) {
+      return res.status(403).json({
+        error: { code: 'FORBIDDEN', message: 'Cannot delete protected root folder' }
+      });
+    }
+
+    const childFolders = db.prepare('SELECT COUNT(*) as count FROM folders WHERE parent_id = ?').get(id);
+    if (childFolders.count > 0) {
+      return res.status(409).json({
+        error: { code: 'FOLDER_NOT_EMPTY', message: '文件夹包含子文件夹，无法删除' }
+      });
+    }
+
+    const items = db.prepare('SELECT COUNT(*) as count FROM items WHERE folder_id = ?').get(id);
+    if (items.count > 0) {
+      return res.status(409).json({
+        error: { code: 'FOLDER_NOT_EMPTY', message: '文件夹包含内容，无法删除' }
+      });
+    }
+
+    db.prepare('DELETE FROM folders WHERE id = ?').run(id);
+
+    res.json({
+      success: true,
+      message: '文件夹删除成功'
+    });
+
+  } catch (error) {
+    console.error('Delete folder error:', error);
+    res.status(500).json({
+      error: { code: 'DATABASE_ERROR', message: '删除文件夹失败' }
+    });
+  }
+});
+
+module.exports = router;
+

@@ -1,0 +1,15 @@
+.DS_Store
+node_modules/
+client/dist/
+
+# Local environment & secrets
+server/.env
+
+# Local data (SQLite DB, uploads, thumbnails, temp files)
+server/data/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+

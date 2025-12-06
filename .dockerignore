@@ -1,0 +1,26 @@
+# Ignore everything not needed for the Docker build context
+.git
+.gitignore
+.vscode
+UI原型
+项目文档
+node_modules
+**/node_modules
+**/.DS_Store
+**/Thumbs.db
+
+# Client build artifacts and local data
+client/dist
+server/data
+server/.env
+server/data/**
+
+# Misc
+**/*.log
+scripts
+data
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
