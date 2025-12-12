@@ -45,6 +45,7 @@ function SnakeGame() {
   const [difficulty, setDifficulty] = useState('NORMAL')
   const [highScore, setHighScore] = useState(0)
   const [currentFoodType, setCurrentFoodType] = useState('NORMAL')
+  const [error, setError] = useState(null)
 
   useEffect(() => {
     const savedHighScore = localStorage.getItem('snakeHighScore')
@@ -56,135 +57,155 @@ function SnakeGame() {
   const initThreeJS = useCallback(() => {
     if (!mountRef.current) return
 
-    // Scene
-    const scene = new THREE.Scene()
-    scene.background = new THREE.Color(0x1a1a2e)
-    sceneRef.current = scene
+    let renderer, handleResize
 
-    // Camera - Isometric view
-    const aspect = window.innerWidth / window.innerHeight
-    const distance = GRID_SIZE * 1.5
-    const camera = new THREE.OrthographicCamera(
-      -distance * aspect,
-      distance * aspect,
-      distance,
-      -distance,
-      0.1,
-      1000
-    )
-    camera.position.set(distance, distance, distance)
-    camera.lookAt(0, 0, 0)
-    cameraRef.current = camera
+    try {
+      // Check WebGL support
+      const canvas = document.createElement('canvas')
+      const gl = canvas.getContext('webgl') || canvas.getContext('experimental-webgl')
+      if (!gl) {
+        setError('您的浏览器不支持 WebGL，无法运行游戏')
+        return
+      }
 
-    // Renderer
-    const renderer = new THREE.WebGLRenderer({ antialias: true })
-    renderer.setSize(window.innerWidth, window.innerHeight)
-    renderer.shadowMap.enabled = true
-    renderer.shadowMap.type = THREE.PCFSoftShadowMap
-    rendererRef.current = renderer
-    mountRef.current.appendChild(renderer.domElement)
+      // Scene
+      const scene = new THREE.Scene()
+      scene.background = new THREE.Color(0x1a1a2e)
+      sceneRef.current = scene
 
-    // Lights
-    const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
-    scene.add(ambientLight)
-
-    const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
-    directionalLight.position.set(10, 20, 10)
-    directionalLight.castShadow = true
-    directionalLight.shadow.camera.left = -GRID_SIZE
-    directionalLight.shadow.camera.right = GRID_SIZE
-    directionalLight.shadow.camera.top = GRID_SIZE
-    directionalLight.shadow.camera.bottom = -GRID_SIZE
-    scene.add(directionalLight)
-
-    // Ground
-    const groundGeometry = new THREE.BoxGeometry(GRID_SIZE, 0.2, GRID_SIZE)
-    const groundMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x16213e,
-      roughness: 0.7,
-      metalness: 0.1
-    })
-    const ground = new THREE.Mesh(groundGeometry, groundMaterial)
-    ground.position.y = -0.1
-    ground.receiveShadow = true
-    scene.add(ground)
-
-    // Grid helper
-    const gridHelper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, 0x0f3460, 0x0f3460)
-    gridHelper.position.y = 0
-    scene.add(gridHelper)
-
-    // Walls
-    const wallMaterial = new THREE.MeshStandardMaterial({ 
-      color: 0x533483,
-      roughness: 0.5,
-      metalness: 0.2
-    })
-    const wallHeight = 2
-    const wallThickness = 0.2
-
-    // North wall
-    const northWall = new THREE.Mesh(
-      new THREE.BoxGeometry(GRID_SIZE + wallThickness * 2, wallHeight, wallThickness),
-      wallMaterial
-    )
-    northWall.position.set(0, wallHeight / 2, -GRID_SIZE / 2 - wallThickness / 2)
-    northWall.castShadow = true
-    scene.add(northWall)
-
-    // South wall
-    const southWall = new THREE.Mesh(
-      new THREE.BoxGeometry(GRID_SIZE + wallThickness * 2, wallHeight, wallThickness),
-      wallMaterial
-    )
-    southWall.position.set(0, wallHeight / 2, GRID_SIZE / 2 + wallThickness / 2)
-    southWall.castShadow = true
-    scene.add(southWall)
-
-    // West wall
-    const westWall = new THREE.Mesh(
-      new THREE.BoxGeometry(wallThickness, wallHeight, GRID_SIZE),
-      wallMaterial
-    )
-    westWall.position.set(-GRID_SIZE / 2 - wallThickness / 2, wallHeight / 2, 0)
-    westWall.castShadow = true
-    scene.add(westWall)
-
-    // East wall
-    const eastWall = new THREE.Mesh(
-      new THREE.BoxGeometry(wallThickness, wallHeight, GRID_SIZE),
-      wallMaterial
-    )
-    eastWall.position.set(GRID_SIZE / 2 + wallThickness / 2, wallHeight / 2, 0)
-    eastWall.castShadow = true
-    scene.add(eastWall)
-
-    // Handle window resize
-    const handleResize = () => {
+      // Camera - Isometric view
       const aspect = window.innerWidth / window.innerHeight
       const distance = GRID_SIZE * 1.5
-      camera.left = -distance * aspect
-      camera.right = distance * aspect
-      camera.top = distance
-      camera.bottom = -distance
-      camera.updateProjectionMatrix()
+      const camera = new THREE.OrthographicCamera(
+        -distance * aspect,
+        distance * aspect,
+        distance,
+        -distance,
+        0.1,
+        1000
+      )
+      camera.position.set(distance, distance, distance)
+      camera.lookAt(0, 0, 0)
+      cameraRef.current = camera
+
+      // Renderer
+      renderer = new THREE.WebGLRenderer({ antialias: true })
       renderer.setSize(window.innerWidth, window.innerHeight)
-    }
-    window.addEventListener('resize', handleResize)
+      renderer.shadowMap.enabled = true
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap
+      rendererRef.current = renderer
+      mountRef.current.appendChild(renderer.domElement)
 
-    // Animation loop
-    const animate = () => {
-      requestAnimationFrame(animate)
-      renderer.render(scene, camera)
-    }
-    animate()
+      // Lights
+      const ambientLight = new THREE.AmbientLight(0xffffff, 0.6)
+      scene.add(ambientLight)
 
-    return () => {
-      window.removeEventListener('resize', handleResize)
-      if (mountRef.current && renderer.domElement) {
-        mountRef.current.removeChild(renderer.domElement)
+      const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8)
+      directionalLight.position.set(10, 20, 10)
+      directionalLight.castShadow = true
+      directionalLight.shadow.camera.left = -GRID_SIZE
+      directionalLight.shadow.camera.right = GRID_SIZE
+      directionalLight.shadow.camera.top = GRID_SIZE
+      directionalLight.shadow.camera.bottom = -GRID_SIZE
+      scene.add(directionalLight)
+
+      // Ground
+      const groundGeometry = new THREE.BoxGeometry(GRID_SIZE, 0.2, GRID_SIZE)
+      const groundMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x16213e,
+        roughness: 0.7,
+        metalness: 0.1
+      })
+      const ground = new THREE.Mesh(groundGeometry, groundMaterial)
+      ground.position.y = -0.1
+      ground.receiveShadow = true
+      scene.add(ground)
+
+      // Grid helper
+      const gridHelper = new THREE.GridHelper(GRID_SIZE, GRID_SIZE, 0x0f3460, 0x0f3460)
+      gridHelper.position.y = 0
+      scene.add(gridHelper)
+
+      // Walls
+      const wallMaterial = new THREE.MeshStandardMaterial({ 
+        color: 0x533483,
+        roughness: 0.5,
+        metalness: 0.2
+      })
+      const wallHeight = 2
+      const wallThickness = 0.2
+
+      // North wall
+      const northWall = new THREE.Mesh(
+        new THREE.BoxGeometry(GRID_SIZE + wallThickness * 2, wallHeight, wallThickness),
+        wallMaterial
+      )
+      northWall.position.set(0, wallHeight / 2, -GRID_SIZE / 2 - wallThickness / 2)
+      northWall.castShadow = true
+      scene.add(northWall)
+
+      // South wall
+      const southWall = new THREE.Mesh(
+        new THREE.BoxGeometry(GRID_SIZE + wallThickness * 2, wallHeight, wallThickness),
+        wallMaterial
+      )
+      southWall.position.set(0, wallHeight / 2, GRID_SIZE / 2 + wallThickness / 2)
+      southWall.castShadow = true
+      scene.add(southWall)
+
+      // West wall
+      const westWall = new THREE.Mesh(
+        new THREE.BoxGeometry(wallThickness, wallHeight, GRID_SIZE),
+        wallMaterial
+      )
+      westWall.position.set(-GRID_SIZE / 2 - wallThickness / 2, wallHeight / 2, 0)
+      westWall.castShadow = true
+      scene.add(westWall)
+
+      // East wall
+      const eastWall = new THREE.Mesh(
+        new THREE.BoxGeometry(wallThickness, wallHeight, GRID_SIZE),
+        wallMaterial
+      )
+      eastWall.position.set(GRID_SIZE / 2 + wallThickness / 2, wallHeight / 2, 0)
+      eastWall.castShadow = true
+      scene.add(eastWall)
+
+      // Handle window resize
+      handleResize = () => {
+        const aspect = window.innerWidth / window.innerHeight
+        const distance = GRID_SIZE * 1.5
+        camera.left = -distance * aspect
+        camera.right = distance * aspect
+        camera.top = distance
+        camera.bottom = -distance
+        camera.updateProjectionMatrix()
+        renderer.setSize(window.innerWidth, window.innerHeight)
       }
-      renderer.dispose()
+      window.addEventListener('resize', handleResize)
+
+      // Animation loop
+      const animate = () => {
+        requestAnimationFrame(animate)
+        renderer.render(scene, camera)
+      }
+      animate()
+    } catch (err) {
+      console.error('Error in Three.js setup:', err)
+      setError('游戏渲染出错: ' + err.message)
+    }
+
+    // Cleanup function
+    return () => {
+      if (handleResize) {
+        window.removeEventListener('resize', handleResize)
+      }
+      if (renderer) {
+        if (mountRef.current && renderer.domElement && mountRef.current.contains(renderer.domElement)) {
+          mountRef.current.removeChild(renderer.domElement)
+        }
+        renderer.dispose()
+      }
     }
   }, [])
 
@@ -481,7 +502,30 @@ function SnakeGame() {
     <div className="snake-game">
       <div ref={mountRef} className="game-canvas" />
 
-      {gameState === 'menu' && (
+      {error && (
+        <div className="game-overlay">
+          <div className="menu-panel">
+            <h2 className="game-title" style={{ color: '#ff4444' }}>游戏加载失败</h2>
+            <div className="menu-content">
+              <div style={{ padding: '2rem', textAlign: 'center', color: '#fff' }}>
+                <p>{error}</p>
+                <p style={{ marginTop: '1rem', fontSize: '0.9rem', color: '#aaa' }}>
+                  请确保您的浏览器支持 WebGL 并已启用硬件加速。
+                </p>
+                <button 
+                  className="start-btn" 
+                  style={{ marginTop: '2rem' }}
+                  onClick={() => window.location.reload()}
+                >
+                  重新加载
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {!error && gameState === 'menu' && (
         <div className="game-overlay">
           <div className="menu-panel">
             <h1 className="game-title">2.5D 贪食蛇</h1>
@@ -530,7 +574,7 @@ function SnakeGame() {
         </div>
       )}
 
-      {gameState === 'playing' && (
+      {!error && gameState === 'playing' && (
         <div className="game-hud">
           <div className="hud-item">
             <span className="hud-label">分数:</span>
@@ -551,7 +595,7 @@ function SnakeGame() {
         </div>
       )}
 
-      {gameState === 'paused' && (
+      {!error && gameState === 'paused' && (
         <div className="game-overlay">
           <div className="pause-panel">
             <h2>游戏暂停</h2>
@@ -572,7 +616,7 @@ function SnakeGame() {
         </div>
       )}
 
-      {gameState === 'gameOver' && (
+      {!error && gameState === 'gameOver' && (
         <div className="game-overlay">
           <div className="game-over-panel">
             <h2 className="game-over-title">游戏结束</h2>
