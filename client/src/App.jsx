@@ -7,6 +7,7 @@ import HomePage from './pages/HomePage'
 import SearchPage from './pages/SearchPage'
 import StatsPage from './pages/StatsPage'
 import SharePage from './pages/SharePage'
+import SnakeGame from './pages/SnakeGame'
 import LoadingSpinner from './components/LoadingSpinner'
 
 function App() {
@@ -20,6 +21,9 @@ function App() {
     <Routes>
       {/* 公开分享页面 - 无需登录 */}
       <Route path="/share/:shareKey" element={<SharePage />} />
+      
+      {/* Snake Game - 无需登录 */}
+      <Route path="/snake" element={<SnakeGame />} />
       
       {/* 需要登录的页面 */}
       {user ? (
